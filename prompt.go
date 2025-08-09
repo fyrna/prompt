@@ -67,11 +67,34 @@ func (t *Terminal) moveCursorRight(cols int) {
 	fmt.Printf("\r\033[%dC", cols)
 }
 
+type Theme struct {
+	Prompt   string // e.g. "❯ "
+	Selected string // e.g. "● "
+	Cursor   string // e.g. "█ "
+	Error    string // e.g. "\033[31m" red
+}
+
+var defaultTheme = Theme{
+	Prompt:   "❯ ",
+	Selected: "● ",
+	Cursor:   "█ ",
+}
+
+func chooseTheme(t *Theme) Theme {
+	if t == nil {
+		return defaultTheme
+	}
+	return *t
+}
+
 // input
 type InputPrompt struct {
 	title       string
 	placeholder string
 	valuePtr    *string
+	mask        bool
+	validate    func(string) error
+	theme       *Theme
 }
 
 func NewInput() *InputPrompt {
@@ -90,6 +113,11 @@ func (ip InputPrompt) Placeholder(s string) *InputPrompt {
 
 func (ip InputPrompt) Value(p *string) *InputPrompt {
 	ip.valuePtr = p
+	return &ip
+}
+
+func (ip InputPrompt) Theme(t *Theme) *InputPrompt {
+	ip.theme = t
 	return &ip
 }
 
@@ -331,6 +359,7 @@ func (s *Select) Run() (string, error) {
 type MultiSelect struct {
 	title   string
 	options []string
+	theme   *Theme
 }
 
 func NewMultiSelect() *MultiSelect {
@@ -349,6 +378,7 @@ func (m *MultiSelect) Options(o []string) *MultiSelect {
 
 func (m *MultiSelect) Run() ([]string, error) {
 	term := NewTerminal()
+	theme := chooseTheme(m.theme)
 
 	if err := term.EnterRaw(); err != nil {
 		return nil, err
@@ -386,13 +416,13 @@ func (m *MultiSelect) Run() ([]string, error) {
 			mark := " "
 
 			if selected[i] {
-				mark = "x"
+				mark = theme.Selected
 			}
 
 			prefix := "  "
 
 			if i == cursor {
-				prefix = "> "
+				prefix = theme.Prompt
 			}
 
 			fmt.Printf("%s%s %s\n", prefix, mark, opt)
