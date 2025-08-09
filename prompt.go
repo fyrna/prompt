@@ -128,7 +128,10 @@ func (ip InputPrompt) Run() (string, error) {
 		return "", err
 	}
 
-	defer func() { _ = term.Restore(); fmt.Println() }()
+	defer func() {
+		_ = term.Restore()
+		fmt.Println()
+	}()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -235,7 +238,6 @@ func NewConfirm(q string) *Confirm {
 
 func (c *Confirm) Run() (bool, error) {
 	term := NewTerminal()
-
 	defer term.Restore()
 
 	df := "y/N"
@@ -250,13 +252,12 @@ func (c *Confirm) Run() (bool, error) {
 		fmt.Printf("%s [%s]: ", c.question, df)
 
 		key, err := term.readKey()
-
 		if err != nil {
 			return c.def, err
 		}
 
 		switch b := key[0]; b {
-		case 3: // Ctrl-C
+		case keyCtrlC:
 			return c.def, errors.New("canceled")
 		case '\r', '\n':
 			return c.def, nil
