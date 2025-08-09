@@ -78,22 +78,22 @@ func NewInput() *InputPrompt {
 	return &InputPrompt{}
 }
 
-func (ip *InputPrompt) Title(s string) *InputPrompt {
+func (ip InputPrompt) Title(s string) *InputPrompt {
 	ip.title = s
-	return ip
+	return &ip
 }
 
-func (ip *InputPrompt) Placeholder(s string) *InputPrompt {
+func (ip InputPrompt) Placeholder(s string) *InputPrompt {
 	ip.placeholder = s
-	return ip
+	return &ip
 }
 
-func (ip *InputPrompt) Value(p *string) *InputPrompt {
+func (ip InputPrompt) Value(p *string) *InputPrompt {
 	ip.valuePtr = p
-	return ip
+	return &ip
 }
 
-func (ip *InputPrompt) Run() (string, error) {
+func (ip InputPrompt) Run() (string, error) {
 	term := NewTerminal()
 
 	if err := term.EnterRaw(); err != nil {
