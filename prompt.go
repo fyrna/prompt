@@ -40,6 +40,7 @@ func (t *Terminal) EnterRaw() (err error) {
 	t.oldState, err = term.MakeRaw(t.fd)
 	return
 }
+
 func (t *Terminal) Restore() error {
 	if t.oldState == nil {
 		return nil
@@ -47,6 +48,7 @@ func (t *Terminal) Restore() error {
 
 	return term.Restore(t.fd, t.oldState)
 }
+
 func (t *Terminal) readKey() ([]byte, error) {
 	buf := make([]byte, 8)
 	n, err := os.Stdin.Read(buf)
@@ -189,6 +191,53 @@ func (ip *InputPrompt) Run() (string, error) {
 				buf = append(buf[:cursor], append([]rune{r}, buf[cursor:]...)...)
 				cursor++
 			}
+		}
+	}
+}
+
+// Confirm
+type Confirm struct {
+	question string
+	def      bool
+}
+
+func NewConfirm(q string) *Confirm {
+	return &Confirm{question: q}
+}
+
+func (c *Confirm) Run() (bool, error) {
+	term := NewTerminal()
+
+	defer term.Restore()
+
+	df := "y/N"
+
+	if c.def {
+		df = "Y/n"
+	}
+
+	for {
+		term.clearLine()
+
+		fmt.Printf("%s [%s]: ", c.question, df)
+
+		key, err := term.readKey()
+
+		if err != nil {
+			return c.def, err
+		}
+
+		switch b := key[0]; b {
+		case 3: // Ctrl-C
+			return c.def, errors.New("canceled")
+		case '\r', '\n':
+			return c.def, nil
+		case 'y', 'Y':
+			return true, nil
+		case 'n', 'N':
+			return false, nil
+		default:
+			return c.def, errors.New("invalid input")
 		}
 	}
 }
