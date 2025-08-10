@@ -45,11 +45,6 @@ func newTerminal() (*terminal, error) {
 	return &terminal{fd: fd, width: w, height: h}, nil
 }
 
-func (t *terminal) enterRaw() (err error) {
-	t.oldState, err = term.MakeRaw(t.fd)
-	return
-}
-
 func (t *terminal) restore() error {
 	if t.oldState == nil {
 		return nil
@@ -91,17 +86,18 @@ func (t *terminal) printf(format string, a ...any) {
 
 // helpers
 func runRaw(fn func(*terminal) error) error {
-	term, err := newTerminal()
+	t, err := newTerminal()
 	if err != nil {
 		return err
 	}
 
-	if err := term.enterRaw(); err != nil {
+	t.oldState, err = term.MakeRaw(t.fd)
+	if err != nil {
 		return err
 	}
 
 	defer func() {
-		_ = term.restore()
+		_ = t.restore()
 		fmt.Println()
 	}()
 
@@ -112,11 +108,11 @@ func runRaw(fn func(*terminal) error) error {
 
 	go func() {
 		<-sig
-		term.restore()
+		t.restore()
 		os.Exit(1)
 	}()
 
-	return fn(term)
+	return fn(t)
 }
 
 // simple theming
@@ -185,7 +181,7 @@ func (ip InputPrompt) Validate(fn func(string) error) *InputPrompt {
 func (ip *InputPrompt) Run() (string, error) {
 	var res string
 
-	err := runRaw(func(term *terminal) error {
+	err := runRaw(func(t *terminal) error {
 		var buf []rune
 
 		if ip.valuePtr != nil && *ip.valuePtr != "" {
@@ -197,19 +193,19 @@ func (ip *InputPrompt) Run() (string, error) {
 		// render
 		for {
 			if ip.clearScreen {
-				term.clearScreenAndTop()
+				t.clearScreenAndTop()
 			}
 
-			term.clearLine()
+			t.clearLine()
 
 			if ip.title != "" {
-				term.printf("%s", ip.title)
+				t.printf("%s", ip.title)
 			}
 
 			if len(buf) == 0 && ip.placeholder != "" {
-				term.printf("\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
+				t.printf("\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
 			} else {
-				term.printf("%s", string(buf))
+				t.printf("%s", string(buf))
 			}
 
 			prefix := 0
@@ -218,9 +214,9 @@ func (ip *InputPrompt) Run() (string, error) {
 				prefix = runewidth.StringWidth(ip.title)
 			}
 
-			term.moveCursorRight(prefix + runewidth.StringWidth(string(buf[:cursor])))
+			t.moveCursorRight(prefix + runewidth.StringWidth(string(buf[:cursor])))
 
-			key, err := term.readKey()
+			key, err := t.readKey()
 			if err != nil {
 				return err
 			}
@@ -250,7 +246,7 @@ func (ip *InputPrompt) Run() (string, error) {
 
 				if ip.validate != nil {
 					if err := ip.validate(res); err != nil {
-						term.printf("\n%s\n", err.Error())
+						t.printf("\n%s\n", err.Error())
 						continue
 					}
 				}
