@@ -60,11 +60,23 @@ func (t *Terminal) clearScreenAndTop() {
 }
 
 func (t *Terminal) clearLine() {
-	fmt.Print("\r\033[2K")
+	fmt.Print("\033[2K\r")
 }
 
 func (t *Terminal) moveCursorRight(cols int) {
 	fmt.Printf("\r\033[%dC", cols)
+}
+
+func (t *Terminal) moveCursorUp() {
+	fmt.Printf("\x1b[A")
+}
+
+type screenCfg struct {
+	clear bool
+}
+
+func (s screenCfg) shouldClear() bool {
+	return s.clear
 }
 
 type Theme struct {
@@ -95,6 +107,8 @@ type InputPrompt struct {
 	mask        bool
 	validate    func(string) error
 	theme       *Theme
+
+	screenCfg
 }
 
 func NewInput() *InputPrompt {
@@ -118,6 +132,11 @@ func (ip InputPrompt) Value(p *string) *InputPrompt {
 
 func (ip InputPrompt) Theme(t *Theme) *InputPrompt {
 	ip.theme = t
+	return &ip
+}
+
+func (ip InputPrompt) ClearScreen(on bool) *InputPrompt {
+	ip.clear = on
 	return &ip
 }
 
@@ -154,6 +173,10 @@ func (ip InputPrompt) Run() (string, error) {
 
 	// render
 	for {
+		if ip.shouldClear() {
+			term.clearScreenAndTop()
+		}
+
 		term.clearLine()
 
 		if ip.title != "" {
@@ -230,10 +253,17 @@ func (ip InputPrompt) Run() (string, error) {
 type Confirm struct {
 	question string
 	def      bool
+
+	screenCfg
 }
 
 func NewConfirm(q string) *Confirm {
 	return &Confirm{question: q}
+}
+
+func (c Confirm) ClearScreen(on bool) *Confirm {
+	c.clear = on
+	return &c
 }
 
 func (c *Confirm) Run() (bool, error) {
@@ -247,6 +277,10 @@ func (c *Confirm) Run() (bool, error) {
 	}
 
 	for {
+		if c.shouldClear() {
+			term.clearScreenAndTop()
+		}
+
 		term.clearLine()
 
 		fmt.Printf("%s [%s]: ", c.question, df)
@@ -276,20 +310,27 @@ type Select struct {
 	title   string
 	options []string
 	theme   *Theme
+
+	screenCfg
 }
 
 func NewSelect() *Select {
 	return &Select{}
 }
 
-func (s *Select) Title(t string) *Select {
+func (s Select) Title(t string) *Select {
 	s.title = t
-	return s
+	return &s
 }
 
-func (s *Select) Options(o []string) *Select {
+func (s Select) Options(o []string) *Select {
 	s.options = o
-	return s
+	return &s
+}
+
+func (s Select) ClearScreen(on bool) *Select {
+	s.clear = on
+	return &s
 }
 
 func (s *Select) Run() (string, error) {
@@ -318,12 +359,16 @@ func (s *Select) Run() (string, error) {
 
 	cursor := 0
 
+	if s.title != "" {
+		fmt.Println(s.title)
+	}
+
 	for {
 		// render
-		term.clearScreenAndTop()
-
-		if s.title != "" {
-			fmt.Println(s.title)
+		if s.shouldClear() {
+			term.clearScreenAndTop()
+		} else {
+			term.clearLine()
 		}
 
 		for i, opt := range s.options {
@@ -358,6 +403,10 @@ func (s *Select) Run() (string, error) {
 		case keyEnter:
 			return s.options[cursor], nil
 		}
+
+		for range len(s.options) {
+			term.moveCursorUp()
+		}
 	}
 }
 
@@ -366,20 +415,27 @@ type MultiSelect struct {
 	title   string
 	options []string
 	theme   *Theme
+
+	screenCfg
 }
 
 func NewMultiSelect() *MultiSelect {
 	return &MultiSelect{}
 }
 
-func (m *MultiSelect) Title(t string) *MultiSelect {
+func (m MultiSelect) Title(t string) *MultiSelect {
 	m.title = t
-	return m
+	return &m
 }
 
-func (m *MultiSelect) Options(o []string) *MultiSelect {
+func (m MultiSelect) Options(o []string) *MultiSelect {
 	m.options = o
-	return m
+	return &m
+}
+
+func (m MultiSelect) ClearScreen(on bool) *MultiSelect {
+	m.clear = on
+	return &m
 }
 
 func (m *MultiSelect) Run() ([]string, error) {
@@ -409,13 +465,17 @@ func (m *MultiSelect) Run() ([]string, error) {
 	cursor := 0
 	selected := make([]bool, len(m.options))
 
+	if m.title != "" {
+		fmt.Println(m.title)
+	}
+
 	for {
 		// render
-		term.clearScreenAndTop()
-
-		if m.title != "" {
-			fmt.Println(m.title)
+		if m.shouldClear() {
+			term.clearScreenAndTop()
 		}
+
+		term.clearLine()
 
 		for i, opt := range m.options {
 			fmt.Printf("\r") // force to 0
@@ -464,6 +524,10 @@ func (m *MultiSelect) Run() ([]string, error) {
 			}
 
 			return chosen, nil
+		}
+
+		for range len(m.options) {
+			term.moveCursorUp()
 		}
 	}
 }
