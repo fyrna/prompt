@@ -20,19 +20,20 @@ const (
 	keySpace     = " "
 	keyBackspace = "\x7f"
 	keyCtrlC     = 3
+	keyCtrlQ     = 17
 )
 
 // terminal wrapper
-type Terminal struct {
+type terminal struct {
 	fd       int
 	oldState *term.State
 }
 
-func NewTerminal() *Terminal {
-	return &Terminal{fd: int(os.Stdin.Fd())}
+func newTerminal() *terminal {
+	return &terminal{fd: int(os.Stdin.Fd())}
 }
 
-func (t *Terminal) EnterRaw() (err error) {
+func (t *terminal) enterRaw() (err error) {
 	if !term.IsTerminal(t.fd) {
 		return errors.New("stdin is not a terminal")
 	}
@@ -41,33 +42,32 @@ func (t *Terminal) EnterRaw() (err error) {
 	return
 }
 
-func (t *Terminal) Restore() error {
+func (t *terminal) restore() error {
 	if t.oldState == nil {
 		return nil
 	}
-
 	return term.Restore(t.fd, t.oldState)
 }
 
-func (t *Terminal) readKey() ([]byte, error) {
+func (t *terminal) readKey() ([]byte, error) {
 	buf := make([]byte, 8)
 	n, err := os.Stdin.Read(buf)
 	return buf[:n], err
 }
 
-func (t *Terminal) clearScreenAndTop() {
-	fmt.Print("\033[2J\033[H")
+func (t *terminal) clearScreenAndTop() {
+	fmt.Print("\x1b[2J\x1b[H")
 }
 
-func (t *Terminal) clearLine() {
-	fmt.Print("\033[2K\r")
+func (t *terminal) clearLine() {
+	fmt.Print("\x1b[2K\r")
 }
 
-func (t *Terminal) moveCursorRight(cols int) {
-	fmt.Printf("\r\033[%dC", cols)
+func (t *terminal) moveCursorRight(cols int) {
+	fmt.Printf("\r\x1b[%dC", cols)
 }
 
-func (t *Terminal) moveCursorUp() {
+func (t *terminal) moveCursorUp() {
 	fmt.Printf("\x1b[A")
 }
 
@@ -101,12 +101,11 @@ func chooseTheme(t *Theme) Theme {
 
 // input
 type InputPrompt struct {
-	title       string
-	placeholder string
-	valuePtr    *string
-	mask        bool
-	validate    func(string) error
-	theme       *Theme
+	title, placeholder string
+	valuePtr           *string
+	mask               bool
+	validate           func(string) error
+	theme              *Theme
 
 	screenCfg
 }
@@ -141,14 +140,14 @@ func (ip InputPrompt) ClearScreen(on bool) *InputPrompt {
 }
 
 func (ip InputPrompt) Run() (string, error) {
-	term := NewTerminal()
+	term := newTerminal()
 
-	if err := term.EnterRaw(); err != nil {
+	if err := term.enterRaw(); err != nil {
 		return "", err
 	}
 
 	defer func() {
-		_ = term.Restore()
+		_ = term.restore()
 		fmt.Println()
 	}()
 
@@ -159,7 +158,7 @@ func (ip InputPrompt) Run() (string, error) {
 
 	go func() {
 		<-sig
-		term.Restore()
+		term.restore()
 		os.Exit(1)
 	}()
 
@@ -231,7 +230,7 @@ func (ip InputPrompt) Run() (string, error) {
 			}
 
 			return res, nil
-		case b0 == keyCtrlC:
+		case b0 == keyCtrlC, b0 == keyCtrlQ:
 			return "", errors.New("canceled")
 		case b0 == 127 || b0 == 8: // backspace
 			if cursor > 0 {
@@ -267,8 +266,8 @@ func (c Confirm) ClearScreen(on bool) *Confirm {
 }
 
 func (c *Confirm) Run() (bool, error) {
-	term := NewTerminal()
-	defer term.Restore()
+	term := newTerminal()
+	defer term.restore()
 
 	df := "y/N"
 
@@ -291,7 +290,7 @@ func (c *Confirm) Run() (bool, error) {
 		}
 
 		switch b := key[0]; b {
-		case keyCtrlC:
+		case keyCtrlC, keyCtrlQ:
 			return c.def, errors.New("canceled")
 		case '\r', '\n':
 			return c.def, nil
@@ -334,15 +333,15 @@ func (s Select) ClearScreen(on bool) *Select {
 }
 
 func (s *Select) Run() (string, error) {
-	term := NewTerminal()
+	term := newTerminal()
 	theme := chooseTheme(s.theme)
 
-	if err := term.EnterRaw(); err != nil {
+	if err := term.enterRaw(); err != nil {
 		return "", err
 	}
 
 	defer func() {
-		_ = term.Restore()
+		_ = term.restore()
 		fmt.Println()
 	}()
 
@@ -353,7 +352,7 @@ func (s *Select) Run() (string, error) {
 
 	go func() {
 		<-sig
-		term.Restore()
+		term.restore()
 		os.Exit(1)
 	}()
 
@@ -439,15 +438,15 @@ func (m MultiSelect) ClearScreen(on bool) *MultiSelect {
 }
 
 func (m *MultiSelect) Run() ([]string, error) {
-	term := NewTerminal()
+	term := newTerminal()
 	theme := chooseTheme(m.theme)
 
-	if err := term.EnterRaw(); err != nil {
+	if err := term.enterRaw(); err != nil {
 		return nil, err
 	}
 
 	defer func() {
-		_ = term.Restore()
+		_ = term.restore()
 		fmt.Println()
 	}()
 
@@ -458,7 +457,7 @@ func (m *MultiSelect) Run() ([]string, error) {
 
 	go func() {
 		<-sig
-		term.Restore()
+		term.restore()
 		os.Exit(1)
 	}()
 
