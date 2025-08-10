@@ -75,8 +75,8 @@ type Theme struct {
 }
 
 var defaultTheme = Theme{
-	Prompt:   "❯ ",
-	Selected: "● ",
+	Prompt:   "\x1b[32m❯\x1b[0m ",
+	Selected: "\x1b[34m✓\x1b[0m ",
 	Cursor:   "█ ",
 }
 
@@ -161,7 +161,7 @@ func (ip InputPrompt) Run() (string, error) {
 		}
 
 		if len(buf) == 0 && ip.placeholder != "" {
-			fmt.Print("\033[90m" + ip.placeholder + "\033[0m")
+			fmt.Print("\x1b[38;5;241m" + ip.placeholder + "\x1b[0m")
 		} else {
 			fmt.Print(string(buf))
 		}
@@ -275,6 +275,7 @@ func (c *Confirm) Run() (bool, error) {
 type Select struct {
 	title   string
 	options []string
+	theme   *Theme
 }
 
 func NewSelect() *Select {
@@ -293,12 +294,16 @@ func (s *Select) Options(o []string) *Select {
 
 func (s *Select) Run() (string, error) {
 	term := NewTerminal()
+	theme := chooseTheme(s.theme)
 
 	if err := term.EnterRaw(); err != nil {
 		return "", err
 	}
 
-	defer func() { _ = term.Restore(); fmt.Println() }()
+	defer func() {
+		_ = term.Restore()
+		fmt.Println()
+	}()
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
@@ -326,7 +331,7 @@ func (s *Select) Run() (string, error) {
 			prefix := "  "
 
 			if i == cursor {
-				prefix = "> "
+				prefix = theme.Prompt
 			}
 
 			fmt.Printf("%s%s\n", prefix, opt)
