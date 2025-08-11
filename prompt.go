@@ -209,7 +209,7 @@ func (c *Confirm) Run() (bool, error) {
 		}
 
 		t.marginTop(theme.MarginTop)
-		t.marginBottom(theme.MarginBottom)
+		defer t.marginBottom(theme.MarginBottom)
 
 		for {
 			if c.clearScreen {
@@ -307,7 +307,7 @@ func (ip *InputPrompt) Run() (string, error) {
 		margin := theme.MarginLeft
 
 		t.marginTop(theme.MarginTop)
-		defer t.marginBottom(theme.MarginBottom - 1) // i try my best :)
+		defer t.marginBottom(theme.MarginBottom) // i try my best :)
 
 		// render
 		for {
