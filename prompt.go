@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"unicode/utf8"
 
@@ -72,16 +73,38 @@ func (t *terminal) moveCursorRight(cols int) {
 
 func (t *terminal) moveCursorUp(times int) {
 	for range times {
-		t.printf("\x1b[A")
+		fmt.Printf("\x1b[A")
 	}
 }
 
-func (t *terminal) println(a ...any) {
+// func (t *terminal) println(a ...any) {
+// 	fmt.Println(a...)
+// }
+
+// func (t *terminal) printf(format string, a ...any) {
+// 	fmt.Printf(format, a...)
+// }
+
+func (t *terminal) printf(m int, format string, a ...any) {
+	fmt.Print(strings.Repeat(" ", m))
+	fmt.Printf(format, a...)
+}
+
+func (t *terminal) println(m int, a ...any) {
+	fmt.Print(strings.Repeat(" ", m))
 	fmt.Println(a...)
 }
 
-func (t *terminal) printf(format string, a ...any) {
-	fmt.Printf(format, a...)
+func (t *terminal) marginTop(n int) {
+	for range n {
+		fmt.Println()
+	}
+}
+
+func (t *terminal) marginBottom(n int) {
+	for range n {
+		fmt.Println()
+	}
 }
 
 // helpers
@@ -117,15 +140,21 @@ func runRaw(fn func(*terminal) error) error {
 
 // simple theming
 type Theme struct {
-	Prompt   string // e.g. "❯ "
-	Selected string // e.g. "● "
-	Cursor   string // e.g. "█ "
+	Prompt, Cursor, Selected, Unselected string
+	Error                                string
+
+	MarginLeft, MarginTop, MarginBottom int
 }
 
 var defaultTheme = Theme{
-	Prompt:   "\x1b[32m❯\x1b[0m ",
-	Selected: "\x1b[34m✓\x1b[0m ",
-	Cursor:   "█ ",
+	Prompt:       "\x1b[32m❯\x1b[0m ",
+	Cursor:       "█ ",
+	Selected:     "\x1b[34m✓\x1b[0m ",
+	Unselected:   "• ",
+	Error:        "",
+	MarginLeft:   1,
+	MarginTop:    1,
+	MarginBottom: 1,
 }
 
 func chooseTheme(t *Theme) Theme {
@@ -133,6 +162,91 @@ func chooseTheme(t *Theme) Theme {
 		return defaultTheme
 	}
 	return *t
+}
+
+func NewTheme() Theme {
+	return defaultTheme
+}
+
+// Set your own theme
+// theme := prompt.NewTheme().Set(func(t *prompt.Theme) { ... })
+func (t Theme) Set(fn func(*Theme)) Theme {
+	fn(&t)
+	return t
+}
+
+// Confirm
+type Confirm struct {
+	question         string
+	def, clearScreen bool
+	theme            *Theme
+}
+
+func NewConfirm() *Confirm {
+	return &Confirm{}
+}
+
+func (c Confirm) Question(q string) *Confirm {
+	c.question = q
+	return &c
+}
+
+func (c Confirm) ClearScreen(on bool) *Confirm {
+	c.clearScreen = on
+	return &c
+}
+
+func (c *Confirm) Run() (bool, error) {
+	var res bool
+
+	err := runRaw(func(t *terminal) error {
+		theme := chooseTheme(c.theme)
+		margin := theme.MarginLeft
+		df := "y/N"
+
+		if c.def {
+			df = "Y/n"
+		}
+
+		t.marginTop(theme.MarginTop)
+		t.marginBottom(theme.MarginBottom)
+
+		for {
+			if c.clearScreen {
+				t.clearScreenAndTop()
+			}
+
+			t.clearLine()
+			t.printf(margin, "%s [%s]", c.question, df)
+
+			key, err := t.readKey()
+			if err != nil {
+				return err
+			}
+
+			switch b := key[0]; b {
+			case keyCtrlC, keyCtrlQ:
+				return errors.New("canceled")
+			case '\r', '\n':
+				res = c.def
+				return nil
+			case 'y', 'Y':
+				res = true
+				return nil
+			case 'n', 'N':
+				res = false
+				return nil
+			default:
+				return errors.New("invalid input")
+			}
+		}
+	})
+
+	if err != nil {
+		return c.def, err
+	}
+
+	return res, nil
 }
 
 // input
@@ -188,7 +302,12 @@ func (ip *InputPrompt) Run() (string, error) {
 			buf = []rune(*ip.valuePtr)
 		}
 
+		theme := chooseTheme(ip.theme)
 		cursor := len(buf)
+		margin := theme.MarginLeft
+
+		t.marginTop(theme.MarginTop)
+		defer t.marginBottom(theme.MarginBottom - 1) // i try my best :)
 
 		// render
 		for {
@@ -199,19 +318,19 @@ func (ip *InputPrompt) Run() (string, error) {
 			t.clearLine()
 
 			if ip.title != "" {
-				t.printf("%s", ip.title)
+				t.printf(margin, "%s", ip.title)
 			}
 
 			if len(buf) == 0 && ip.placeholder != "" {
-				t.printf("\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
+				t.printf(0, "\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
 			} else {
-				t.printf("%s", string(buf))
+				t.printf(0, "%s", string(buf))
 			}
 
 			prefix := 0
 
 			if ip.title != "" {
-				prefix = runewidth.StringWidth(ip.title)
+				prefix = runewidth.StringWidth(ip.title + " ")
 			}
 
 			t.moveCursorRight(prefix + runewidth.StringWidth(string(buf[:cursor])))
@@ -244,9 +363,11 @@ func (ip *InputPrompt) Run() (string, error) {
 			case b0 == '\r' || b0 == '\n':
 				res := string(buf)
 
+				// wtf is wrong with my code.
+				// aight. fix it later. validation gave me a VALID DEPRESSION
 				if ip.validate != nil {
 					if err := ip.validate(res); err != nil {
-						t.printf("\n%s\n", err.Error())
+						t.printf(margin, "fuck")
 						continue
 					}
 				}
@@ -277,74 +398,6 @@ func (ip *InputPrompt) Run() (string, error) {
 
 	if err != nil {
 		return "", err
-	}
-
-	return res, nil
-}
-
-// Confirm
-type Confirm struct {
-	question         string
-	def, clearScreen bool
-}
-
-func NewConfirm() *Confirm {
-	return &Confirm{}
-}
-
-func (c Confirm) Question(q string) *Confirm {
-	c.question = q
-	return &c
-}
-
-func (c Confirm) ClearScreen(on bool) *Confirm {
-	c.clearScreen = on
-	return &c
-}
-
-func (c *Confirm) Run() (bool, error) {
-	var res bool
-
-	err := runRaw(func(t *terminal) error {
-		df := "y/N"
-
-		if c.def {
-			df = "Y/n"
-		}
-
-		for {
-			if c.clearScreen {
-				t.clearScreenAndTop()
-			}
-
-			t.clearLine()
-			t.printf("%s [%s]", c.question, df)
-
-			key, err := t.readKey()
-			if err != nil {
-				return err
-			}
-
-			switch b := key[0]; b {
-			case keyCtrlC, keyCtrlQ:
-				return errors.New("canceled")
-			case '\r', '\n':
-				res = c.def
-				return nil
-			case 'y', 'Y':
-				res = true
-				return nil
-			case 'n', 'N':
-				res = false
-				return nil
-			default:
-				return errors.New("invalid input")
-			}
-		}
-	})
-
-	if err != nil {
-		return c.def, err
 	}
 
 	return res, nil
@@ -392,9 +445,13 @@ func (s *Select) Run() (string, error) {
 	err := runRaw(func(t *terminal) error {
 		cursor := 0
 		theme := chooseTheme(s.theme)
+		margin := theme.MarginLeft
+
+		t.marginTop(theme.MarginTop)
+		defer t.marginBottom(theme.MarginBottom)
 
 		if s.title != "" {
-			t.println(s.title)
+			t.println(margin, s.title)
 		}
 
 		for {
@@ -411,7 +468,7 @@ func (s *Select) Run() (string, error) {
 					prefix = theme.Prompt
 				}
 
-				t.printf("\r%s%s\n", prefix, opt)
+				t.printf(margin, "\r%s%s\n", prefix, opt)
 			}
 
 			key, err := t.readKey()
@@ -489,9 +546,14 @@ func (m *MultiSelect) Run() ([]string, error) {
 		cursor := 0
 		selected := make([]bool, len(m.options))
 		theme := chooseTheme(m.theme)
+		margin := theme.MarginLeft
+
+		t.marginTop(theme.MarginTop)
+		// x - 1, because it prints new line after each option
+		defer t.marginBottom(theme.MarginBottom - 1)
 
 		if m.title != "" {
-			t.println(m.title)
+			t.println(margin, m.title)
 		}
 
 		for {
@@ -502,8 +564,8 @@ func (m *MultiSelect) Run() ([]string, error) {
 			}
 
 			for i, opt := range m.options {
-				t.printf("\r")
-				mark := "● "
+				fmt.Printf("\r") // keep it. this gave me depression
+				mark := theme.Unselected
 
 				if selected[i] {
 					mark = theme.Selected
@@ -515,7 +577,7 @@ func (m *MultiSelect) Run() ([]string, error) {
 					prefix = theme.Prompt
 				}
 
-				t.printf("\r%s%s %s\n", prefix, mark, opt)
+				t.printf(margin, "\r%s%s %s\n", prefix, mark, opt)
 			}
 
 			key, err := t.readKey()
