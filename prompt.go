@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"reflect"
 	"strings"
 	"syscall"
 	"unicode/utf8"
@@ -12,6 +13,27 @@ import (
 	"github.com/mattn/go-runewidth"
 	"golang.org/x/term"
 )
+
+// Option represents a selectable option
+type Option struct {
+	Text     string
+	Value    interface{}
+	selected bool
+}
+
+// NewOption creates a new Option
+func NewOption(text string, value any) *Option {
+	return &Option{
+		Text:  text,
+		Value: value,
+	}
+}
+
+// Selected sets whether the option is selected by default
+func (o *Option) Selected(selected bool) *Option {
+	o.selected = selected
+	return o
+}
 
 // keys
 const (
@@ -77,14 +99,6 @@ func (t *terminal) moveCursorUp(times int) {
 	}
 }
 
-// func (t *terminal) println(a ...any) {
-// 	fmt.Println(a...)
-// }
-
-// func (t *terminal) printf(format string, a ...any) {
-// 	fmt.Printf(format, a...)
-// }
-
 func (t *terminal) printf(m int, format string, a ...any) {
 	fmt.Print(strings.Repeat(" ", m))
 	fmt.Printf(format, a...)
@@ -107,7 +121,6 @@ func (t *terminal) marginBottom(n int) {
 	}
 }
 
-// helpers
 func runRaw(fn func(*terminal) error) error {
 	t, err := newTerminal()
 	if err != nil {
@@ -138,12 +151,11 @@ func runRaw(fn func(*terminal) error) error {
 	return fn(t)
 }
 
-// simple theming
+// Theme defines the styling for prompts
 type Theme struct {
 	Prompt, Cursor, Selected, Unselected string
 	Error                                string
-
-	MarginLeft, MarginTop, MarginBottom int
+	MarginLeft, MarginTop, MarginBottom  int
 }
 
 var defaultTheme = Theme{
@@ -164,39 +176,54 @@ func chooseTheme(t *Theme) Theme {
 	return *t
 }
 
+// NewTheme creates a new theme with default values
 func NewTheme() Theme {
 	return defaultTheme
 }
 
-// Set your own theme
-// theme := prompt.NewTheme().Set(func(t *prompt.Theme) { ... })
+// Set modifies the theme with the given function
 func (t Theme) Set(fn func(*Theme)) Theme {
 	fn(&t)
 	return t
 }
 
-// Confirm
+// Confirm prompt
 type Confirm struct {
-	question         string
-	def, clearScreen bool
-	theme            *Theme
+	title       string
+	def         bool
+	clearScreen bool
+	theme       *Theme
+	valuePtr    *bool
 }
 
+// NewConfirm creates a new Confirm prompt
 func NewConfirm() *Confirm {
 	return &Confirm{}
 }
 
-func (c Confirm) Question(q string) *Confirm {
-	c.question = q
+// Question sets the question text
+func (c Confirm) Title(title string) *Confirm {
+	c.title = title
 	return &c
 }
 
+// ClearScreen sets whether to clear screen before showing prompt
 func (c Confirm) ClearScreen(on bool) *Confirm {
 	c.clearScreen = on
 	return &c
 }
 
-func (c *Confirm) Run() (bool, error) {
+// Value sets the reference to store the result
+func (c Confirm) Value(v *bool) *Confirm {
+	c.valuePtr = v
+	if v != nil {
+		c.def = *v
+	}
+	return &c
+}
+
+// Run executes the prompt
+func (c *Confirm) Run() error {
 	var res bool
 
 	err := runRaw(func(t *terminal) error {
@@ -217,7 +244,7 @@ func (c *Confirm) Run() (bool, error) {
 			}
 
 			t.clearLine()
-			t.printf(margin, "%s [%s]", c.question, df)
+			t.printf(margin, "%s [%s]", c.title, df)
 
 			key, err := t.readKey()
 			if err != nil {
@@ -236,20 +263,22 @@ func (c *Confirm) Run() (bool, error) {
 			case 'n', 'N':
 				res = false
 				return nil
-			default:
-				return errors.New("invalid input")
 			}
 		}
 	})
 
 	if err != nil {
-		return c.def, err
+		return err
 	}
 
-	return res, nil
+	if c.valuePtr != nil {
+		*c.valuePtr = res
+	}
+
+	return nil
 }
 
-// input
+// InputPrompt for text input
 type InputPrompt struct {
 	title, placeholder string
 	valuePtr           *string
@@ -258,41 +287,49 @@ type InputPrompt struct {
 	clearScreen        bool
 }
 
+// NewInput creates a new Input prompt
 func NewInput() *InputPrompt {
 	return &InputPrompt{}
 }
 
+// Title sets the title text
 func (ip InputPrompt) Title(s string) *InputPrompt {
 	ip.title = s
 	return &ip
 }
 
+// Placeholder sets the placeholder text
 func (ip InputPrompt) Placeholder(s string) *InputPrompt {
 	ip.placeholder = s
 	return &ip
 }
 
-func (ip InputPrompt) Value(p *string) *InputPrompt {
-	ip.valuePtr = p
+// Value sets the reference to store the result
+func (ip InputPrompt) Value(v *string) *InputPrompt {
+	ip.valuePtr = v
 	return &ip
 }
 
+// Theme sets the theme
 func (ip InputPrompt) Theme(t *Theme) *InputPrompt {
 	ip.theme = t
 	return &ip
 }
 
+// ClearScreen sets whether to clear screen before showing prompt
 func (ip InputPrompt) ClearScreen(on bool) *InputPrompt {
 	ip.clearScreen = on
 	return &ip
 }
 
+// Validate sets the validation function
 func (ip InputPrompt) Validate(fn func(string) error) *InputPrompt {
 	ip.validate = fn
 	return &ip
 }
 
-func (ip *InputPrompt) Run() (string, error) {
+// Run executes the prompt
+func (ip *InputPrompt) Run() error {
 	var res string
 
 	err := runRaw(func(t *terminal) error {
@@ -307,9 +344,8 @@ func (ip *InputPrompt) Run() (string, error) {
 		margin := theme.MarginLeft
 
 		t.marginTop(theme.MarginTop)
-		defer t.marginBottom(theme.MarginBottom) // i try my best :)
+		defer t.marginBottom(theme.MarginBottom)
 
-		// render
 		for {
 			if ip.clearScreen {
 				t.clearScreenAndTop()
@@ -340,15 +376,14 @@ func (ip *InputPrompt) Run() (string, error) {
 				return err
 			}
 
-			// arrow keys
 			if len(key) >= 3 && key[0] == '\x1b' && key[1] == '[' {
 				switch key[2] {
-				case 'D': // left
+				case 'D':
 					if cursor > 0 {
 						cursor--
 					}
 					continue
-				case 'C': // right
+				case 'C':
 					if cursor < len(buf) {
 						cursor++
 					}
@@ -361,13 +396,12 @@ func (ip *InputPrompt) Run() (string, error) {
 			b0 := key[0]
 			switch {
 			case b0 == '\r' || b0 == '\n':
-				res := string(buf)
+				res = string(buf)
 
-				// wtf is wrong with my code.
-				// aight. fix it later. validation gave me a VALID DEPRESSION
 				if ip.validate != nil {
 					if err := ip.validate(res); err != nil {
-						t.printf(margin, "fuck")
+						t.clearLine()
+						t.printf(margin, "%s", theme.Error)
 						continue
 					}
 				}
@@ -384,7 +418,7 @@ func (ip *InputPrompt) Run() (string, error) {
 					buf = append(buf[:cursor-1], buf[cursor:]...)
 					cursor--
 				}
-			case b0 >= 32 && b0 <= 126: // printable
+			case b0 >= 32 && b0 <= 126:
 				r, size := utf8.DecodeRune(key)
 				if r == utf8.RuneError || size == 0 {
 					continue
@@ -397,50 +431,63 @@ func (ip *InputPrompt) Run() (string, error) {
 	})
 
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return res, nil
+	return nil
 }
 
-// select
+// Select prompt
 type Select struct {
 	title      string
-	options    []string
+	options    []*Option
+	valuePtr   interface{}
 	theme      *Theme
 	clearSreen bool
 }
 
+// NewSelect creates a new Select prompt
 func NewSelect() *Select {
 	return &Select{}
 }
 
+// Title sets the title text
 func (s Select) Title(t string) *Select {
 	s.title = t
 	return &s
 }
 
-func (s Select) Options(o []string) *Select {
-	s.options = o
+// Options sets the available options
+func (s Select) Options(opts ...[]*Option) *Select {
+	for _, o := range opts {
+		s.options = o
+	}
 	return &s
 }
 
+// Value sets the reference to store the result
+func (s Select) Value(v interface{}) *Select {
+	s.valuePtr = v
+	return &s
+}
+
+// Theme sets the theme
 func (s Select) Theme(t *Theme) *Select {
 	s.theme = t
 	return &s
 }
 
+// ClearScreen sets whether to clear screen before showing prompt
 func (s Select) ClearScreen(on bool) *Select {
 	s.clearSreen = on
 	return &s
 }
 
-func (s *Select) Run() (string, error) {
+// Run executes the prompt
+func (s *Select) Run() error {
 	if len(s.options) == 0 {
-		return "", errors.New("no options")
+		return errors.New("no options")
 	}
-
-	var res string
 
 	err := runRaw(func(t *terminal) error {
 		cursor := 0
@@ -468,7 +515,7 @@ func (s *Select) Run() (string, error) {
 					prefix = theme.Prompt
 				}
 
-				t.printf(margin, "\r%s%s\n", prefix, opt)
+				t.printf(margin, "\r%s%s\n", prefix, opt.Text)
 			}
 
 			key, err := t.readKey()
@@ -486,7 +533,14 @@ func (s *Select) Run() (string, error) {
 					cursor++
 				}
 			case keyEnter:
-				res = s.options[cursor]
+				if s.valuePtr != nil {
+					selectedValue := s.options[cursor].Value
+					ptrValue := reflect.ValueOf(s.valuePtr)
+					if ptrValue.Kind() != reflect.Ptr {
+						return errors.New("value must be a pointer")
+					}
+					ptrValue.Elem().Set(reflect.ValueOf(selectedValue))
+				}
 				return nil
 			case string([]byte{keyCtrlC}):
 				return errors.New("canceled")
@@ -496,60 +550,65 @@ func (s *Select) Run() (string, error) {
 		}
 	})
 
-	if err != nil {
-		return "", err
-	}
-
-	return res, nil
+	return err
 }
 
-// Multi-select
+// MultiSelect prompt
 type MultiSelect struct {
 	title       string
-	options     []string
+	options     []*Option
+	valuePtr    interface{}
 	theme       *Theme
 	clearScreen bool
 }
 
+// NewMultiSelect creates a new MultiSelect prompt
 func NewMultiSelect() *MultiSelect {
 	return &MultiSelect{}
 }
 
+// Title sets the title text
 func (m MultiSelect) Title(t string) *MultiSelect {
 	m.title = t
 	return &m
 }
 
-func (m MultiSelect) Options(o []string) *MultiSelect {
+// Options sets the available options
+func (m MultiSelect) Options(o []*Option) *MultiSelect {
 	m.options = o
 	return &m
 }
 
+// Value sets the reference to store the result
+func (m MultiSelect) Value(v interface{}) *MultiSelect {
+	m.valuePtr = v
+	return &m
+}
+
+// Theme sets the theme
 func (m MultiSelect) Theme(t *Theme) *MultiSelect {
 	m.theme = t
 	return &m
 }
 
+// ClearScreen sets whether to clear screen before showing prompt
 func (m MultiSelect) ClearScreen(on bool) *MultiSelect {
 	m.clearScreen = on
 	return &m
 }
 
-func (m *MultiSelect) Run() ([]string, error) {
+// Run executes the prompt
+func (m *MultiSelect) Run() error {
 	if len(m.options) == 0 {
-		return nil, errors.New("no options")
+		return errors.New("no options")
 	}
-
-	var chosen []string
 
 	err := runRaw(func(t *terminal) error {
 		cursor := 0
-		selected := make([]bool, len(m.options))
 		theme := chooseTheme(m.theme)
 		margin := theme.MarginLeft
 
 		t.marginTop(theme.MarginTop)
-		// x - 1, because it prints new line after each option
 		defer t.marginBottom(theme.MarginBottom - 1)
 
 		if m.title != "" {
@@ -564,10 +623,10 @@ func (m *MultiSelect) Run() ([]string, error) {
 			}
 
 			for i, opt := range m.options {
-				fmt.Printf("\r") // keep it. this gave me depression
+				fmt.Printf("\r")
 				mark := theme.Unselected
 
-				if selected[i] {
+				if opt.selected {
 					mark = theme.Selected
 				}
 
@@ -577,7 +636,7 @@ func (m *MultiSelect) Run() ([]string, error) {
 					prefix = theme.Prompt
 				}
 
-				t.printf(margin, "\r%s%s %s\n", prefix, mark, opt)
+				t.printf(margin, "\r%s%s %s\n", prefix, mark, opt.Text)
 			}
 
 			key, err := t.readKey()
@@ -595,11 +654,39 @@ func (m *MultiSelect) Run() ([]string, error) {
 					cursor++
 				}
 			case keySpace:
-				selected[cursor] = !selected[cursor]
+				m.options[cursor].selected = !m.options[cursor].selected
 			case keyEnter:
-				for i, v := range selected {
-					if v {
-						chosen = append(chosen, m.options[i])
+				if m.valuePtr != nil {
+					ptrValue := reflect.ValueOf(m.valuePtr)
+					if ptrValue.Kind() != reflect.Ptr {
+						return errors.New("value must be a pointer")
+					}
+
+					// Handle both []string and []interface{}
+					elem := ptrValue.Elem()
+					switch elem.Kind() {
+					case reflect.Slice:
+						if elem.Type().Elem().Kind() == reflect.String {
+							// For []string
+							selectedStrings := make([]string, 0)
+							for _, opt := range m.options {
+								if opt.selected {
+									if str, ok := opt.Value.(string); ok {
+										selectedStrings = append(selectedStrings, str)
+									}
+								}
+							}
+							elem.Set(reflect.ValueOf(selectedStrings))
+						} else {
+							// For other slice types
+							selectedValues := make([]interface{}, 0)
+							for _, opt := range m.options {
+								if opt.selected {
+									selectedValues = append(selectedValues, opt.Value)
+								}
+							}
+							elem.Set(reflect.ValueOf(selectedValues))
+						}
 					}
 				}
 				return nil
@@ -611,9 +698,5 @@ func (m *MultiSelect) Run() ([]string, error) {
 		}
 	})
 
-	if err != nil {
-		return nil, err
-	}
-
-	return chosen, nil
+	return err
 }
