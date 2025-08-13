@@ -1,3 +1,5 @@
+github.com/fyrna/x/term v0.0.0-20250813045040-84ff172cfd12 h1:4yBAs3nZy9bOSgjp2LgEFH2DyyOEn7bsY47sMm6fGJQ=
+github.com/fyrna/x/term v0.0.0-20250813045040-84ff172cfd12/go.mod h1:sBzFLfmkBrP8utf3K6NuvCUat6GhxwszB/jGXeLKjV8=
 github.com/mattn/go-runewidth v0.0.16 h1:E5ScNMtiwvlvB5paMFdw9p4kSQzbXFikJ5SQO6TULQc=
 github.com/mattn/go-runewidth v0.0.16/go.mod h1:Jdepj2loyihRzMpdS35Xk/zdY8IAYHsh153qUoGf23w=
 github.com/rivo/uniseg v0.2.0 h1:S1pD9weZBuJdFmowNwbpi7BJ8TNftyUImj/0WQi72jY=
