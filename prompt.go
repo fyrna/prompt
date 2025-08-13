@@ -383,9 +383,7 @@ func (ip *InputPrompt) Run() error {
 
 				if ip.validate != nil {
 					if err := ip.validate(res); err != nil {
-						t.clearLine()
-						t.printf(theme.MarginLeft, "%s", theme.Error)
-						continue
+						return err
 					}
 				}
 
