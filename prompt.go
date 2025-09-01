@@ -62,6 +62,14 @@ func (t *terminal) moveCursorUp(times int) {
 	}
 }
 
+func (t *terminal) removeCursor() {
+	fmt.Print("\033[?25l")
+}
+
+func (t *terminal) bringBack() {
+	fmt.Print("\033[?25h")
+}
+
 func (t *terminal) printf(m int, format string, a ...any) {
 	fmt.Print(strings.Repeat(" ", m))
 	fmt.Printf(format, a...)
@@ -223,6 +231,9 @@ func (c *Confirm) Run() error {
 		t.marginTop(theme.MarginTop)
 		defer t.marginBottom(theme.MarginBottom)
 
+		t.removeCursor()
+		defer t.bringBack()
+
 		for {
 			if c.clearScreen {
 				t.clearScreenAndTop()
@@ -332,6 +343,9 @@ func (ip *InputPrompt) Run() error {
 
 		t.marginTop(theme.MarginTop)
 		defer t.marginBottom(theme.MarginBottom)
+
+		t.removeCursor()
+		defer t.bringBack()
 
 		for {
 			if ip.clearScreen {
@@ -468,7 +482,10 @@ func (s *Select) Run() error {
 		theme := chooseTheme(s.theme)
 
 		t.marginTop(theme.MarginTop)
-		defer t.marginBottom(theme.MarginBottom)
+		defer t.marginBottom(theme.MarginBottom - 1)
+
+		t.removeCursor()
+		defer t.bringBack()
 
 		if s.title != "" {
 			t.println(theme.MarginLeft, s.title)
@@ -582,6 +599,9 @@ func (m *MultiSelect) Run() error {
 
 		t.marginTop(theme.MarginTop)
 		defer t.marginBottom(theme.MarginBottom - 1)
+
+		t.removeCursor()
+		defer t.bringBack()
 
 		if m.title != "" {
 			t.println(theme.MarginLeft, m.title)
