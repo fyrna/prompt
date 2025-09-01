@@ -9,39 +9,36 @@ import (
 	"strings"
 	"syscall"
 
-	fyterm "github.com/fyrna/x/term"
+	"github.com/fyrna/x/term"
+	"github.com/fyrna/x/term/key"
 	"github.com/mattn/go-runewidth"
-	"golang.org/x/term"
 )
 
 var ErrCanceled = errors.New("canceled")
 
 // terminal wrapper
 type terminal struct {
-	fd, width, height int
-	oldState          *term.State
+	t             *term.Terminal
+	kr            *key.Reader
+	width, height int
 }
 
 func newTerminal() (*terminal, error) {
-	fd := int(os.Stdin.Fd())
-
-	if !term.IsTerminal(fd) {
+	t := term.NewStdinTerminal()
+	if !t.IsTerminal() {
 		return nil, errors.New("stdin is not a terminal")
 	}
 
-	w, h, err := term.GetSize(fd)
+	w, h, err := t.GetSize()
 	if err != nil {
 		return nil, err
 	}
 
-	return &terminal{fd: fd, width: w, height: h}, nil
+	return &terminal{t: t, width: w, height: h}, nil
 }
 
 func (t *terminal) restore() error {
-	if t.oldState == nil {
-		return nil
-	}
-	return term.Restore(t.fd, t.oldState)
+	return t.t.Restore()
 }
 
 func (t *terminal) clearScreenAndTop() {
@@ -98,12 +95,11 @@ func runRaw(fn func(*terminal) error) error {
 		return err
 	}
 
-	t.oldState, err = term.MakeRaw(t.fd)
-	if err != nil {
+	if err := t.t.MakeRaw(); err != nil {
 		return err
 	}
 
-	fyterm.Init()
+	t.kr = key.NewReader(t.t)
 
 	defer func() {
 		_ = t.restore()
@@ -242,24 +238,24 @@ func (c *Confirm) Run() error {
 			t.clearLine()
 			t.printf(theme.MarginLeft, "%s [%s]", c.title, df)
 
-			ev, err := fyterm.Read()
+			ev, err := t.kr.ReadEvent()
 			if err != nil {
 				return err
 			}
 
 			switch {
-			case ev.IsCtrl('c'), ev.IsCtrl('q'):
+			case ev.IsCtrl('c') || ev.IsCtrl('q'):
 				return errors.New("canceled")
 
-			case ev.Key == fyterm.KeyEnter:
+			case ev.Key == key.Enter:
 				res = c.def
 				return nil
 
-			case ev.Key == fyterm.KeyRune && (ev.Rune == 'y' || ev.Rune == 'Y'):
+			case ev.Key == key.Rune && (ev.Rune == 'y' || ev.Rune == 'Y'):
 				res = true
 				return nil
 
-			case ev.Key == fyterm.KeyRune && (ev.Rune == 'n' || ev.Rune == 'N'):
+			case ev.Key == key.Rune && (ev.Rune == 'n' || ev.Rune == 'N'):
 				res = false
 				return nil
 			}
@@ -372,7 +368,7 @@ func (ip *InputPrompt) Run() error {
 
 			t.moveCursorRight(prefix + runewidth.StringWidth(string(buf[:cursor])))
 
-			ev, err := fyterm.Read()
+			ev, err := t.kr.ReadEvent()
 			if err != nil {
 				return err
 			}
@@ -380,19 +376,19 @@ func (ip *InputPrompt) Run() error {
 			switch {
 			case ev.IsCtrl('c'), ev.IsCtrl('q'):
 				return ErrCanceled
-			case ev.Key == fyterm.KeyUp, ev.Key == fyterm.KeyDown:
+			case ev.Key == key.Up, ev.Key == key.Down:
 				continue
-			case ev.Key == fyterm.KeyLeft:
+			case ev.Key == key.Left:
 				if cursor > 0 {
 					cursor--
 				}
 				continue
-			case ev.Key == fyterm.KeyRight:
+			case ev.Key == key.Right:
 				if cursor < len(buf) {
 					cursor++
 				}
 				continue
-			case ev.Key == fyterm.KeyEnter:
+			case ev.Key == key.Enter:
 				res = string(buf)
 
 				if ip.validate != nil {
@@ -406,12 +402,12 @@ func (ip *InputPrompt) Run() error {
 				}
 
 				return nil
-			case ev.Key == fyterm.KeyBackspace:
+			case ev.Key == key.Backspace:
 				if cursor > 0 {
 					buf = append(buf[:cursor-1], buf[cursor:]...)
 					cursor--
 				}
-			case ev.Key == fyterm.KeyRune:
+			case ev.Key == key.Rune:
 				buf = append(buf[:cursor], append([]rune{ev.Rune}, buf[cursor:]...)...)
 				cursor++
 			}
@@ -508,7 +504,7 @@ func (s *Select) Run() error {
 				t.printf(theme.MarginLeft, "\r%s%s\n", prefix, opt.Text)
 			}
 
-			ev, err := fyterm.Read()
+			ev, err := t.kr.ReadEvent()
 			if err != nil {
 				return err
 			}
@@ -516,15 +512,15 @@ func (s *Select) Run() error {
 			switch {
 			case ev.IsCtrl('c'), ev.IsCtrl('q'):
 				return ErrCanceled
-			case ev.Key == fyterm.KeyUp:
+			case ev.Key == key.Up:
 				if cursor > 0 {
 					cursor--
 				}
-			case ev.Key == fyterm.KeyDown:
+			case ev.Key == key.Down:
 				if cursor < len(s.options)-1 {
 					cursor++
 				}
-			case ev.Key == fyterm.KeyEnter:
+			case ev.Key == key.Enter:
 				if s.valuePtr != nil {
 					selectedValue := s.options[cursor].Value
 					ptrValue := reflect.ValueOf(s.valuePtr)
@@ -631,7 +627,7 @@ func (m *MultiSelect) Run() error {
 				t.printf(theme.MarginLeft, "\r%s%s %s\n", prefix, mark, opt.Text)
 			}
 
-			ev, err := fyterm.Read()
+			ev, err := t.kr.ReadEvent()
 			if err != nil {
 				return err
 			}
@@ -639,17 +635,17 @@ func (m *MultiSelect) Run() error {
 			switch {
 			case ev.IsCtrl('c'), ev.IsCtrl('q'):
 				return ErrCanceled
-			case ev.Key == fyterm.KeyUp:
+			case ev.Key == key.Up:
 				if cursor > 0 {
 					cursor--
 				}
-			case ev.Key == fyterm.KeyDown:
+			case ev.Key == key.Down:
 				if cursor < len(m.options)-1 {
 					cursor++
 				}
-			case ev.Key == fyterm.KeySpace:
+			case ev.Key == key.Space:
 				m.options[cursor].selected = !m.options[cursor].selected
-			case ev.Key == fyterm.KeyEnter:
+			case ev.Key == key.Enter:
 				if m.valuePtr != nil {
 					ptrValue := reflect.ValueOf(m.valuePtr)
 					if ptrValue.Kind() != reflect.Ptr {
