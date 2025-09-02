@@ -85,6 +85,18 @@ func (t *terminal) marginBottom(n int) {
 	}
 }
 
+func (t *terminal) helpBar(m int, text string) {
+	if text == "" {
+		return
+	}
+	fmt.Print("\x1b[s")                // save cursor
+	fmt.Printf("\x1b[%d;1H", t.height) // bottom row
+	fmt.Print("\x1b[2K")               // clear line
+	fmt.Print(strings.Repeat(" ", m))
+	fmt.Print(text)
+	fmt.Print("\x1b[u") // restore cursor
+}
+
 func runRaw(fn func(*terminal) error) error {
 	t, err := newTerminal()
 	if err != nil {
@@ -116,27 +128,6 @@ func runRaw(fn func(*terminal) error) error {
 	return fn(t)
 }
 
-// Option represents a selectable option
-type Option struct {
-	Text     string
-	Value    any
-	selected bool
-}
-
-// NewOption creates a new Option
-func NewOption(text string, value any) *Option {
-	return &Option{
-		Text:  text,
-		Value: value,
-	}
-}
-
-// Selected sets whether the option is selected by default
-func (o *Option) Selected(selected bool) *Option {
-	o.selected = selected
-	return o
-}
-
 // Theme defines the styling for prompts
 type Theme struct {
 	Prompt, Cursor, Selected, Unselected string
@@ -157,18 +148,6 @@ var defaultTheme = Theme{
 	MultiSelectHelp: "\x1b[38;5;245m[↑↓] navigate • [space] select • [enter] confirm\x1b[0m",
 }
 
-func (t *terminal) helpBar(m int, text string) {
-	if text == "" {
-		return
-	}
-	fmt.Print("\x1b[s")                // save cursor
-	fmt.Printf("\x1b[%d;1H", t.height) // bottom row
-	fmt.Print("\x1b[2K")               // clear line
-	fmt.Print(strings.Repeat(" ", m))
-	fmt.Print(text)
-	fmt.Print("\x1b[u") // restore cursor
-}
-
 func chooseTheme(t *Theme) Theme {
 	if t == nil {
 		return defaultTheme
@@ -185,6 +164,27 @@ func NewTheme() Theme {
 func (t Theme) Set(fn func(*Theme)) Theme {
 	fn(&t)
 	return t
+}
+
+// Option represents a selectable option
+type Option struct {
+	Text     string
+	Value    any
+	selected bool
+}
+
+// NewOption creates a new Option
+func NewOption(text string, value any) *Option {
+	return &Option{
+		Text:  text,
+		Value: value,
+	}
+}
+
+// Selected sets whether the option is selected by default
+func (o *Option) Selected(selected bool) *Option {
+	o.selected = selected
+	return o
 }
 
 // Confirm prompt
