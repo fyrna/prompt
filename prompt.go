@@ -37,10 +37,6 @@ func newTerminal() (*terminal, error) {
 	return &terminal{t: t, width: w, height: h}, nil
 }
 
-func (t *terminal) restore() error {
-	return t.t.Restore()
-}
-
 func (t *terminal) clearScreenAndTop() {
 	fmt.Print("\x1b[2J\x1b[H")
 }
@@ -102,7 +98,7 @@ func runRaw(fn func(*terminal) error) error {
 	t.kr = key.NewReader(t.t)
 
 	defer func() {
-		_ = t.restore()
+		_ = t.t.Restore()
 		fmt.Println()
 	}()
 
@@ -113,7 +109,7 @@ func runRaw(fn func(*terminal) error) error {
 
 	go func() {
 		<-sig
-		t.restore()
+		t.t.Restore()
 		os.Exit(1)
 	}()
 
@@ -144,19 +140,33 @@ func (o *Option) Selected(selected bool) *Option {
 // Theme defines the styling for prompts
 type Theme struct {
 	Prompt, Cursor, Selected, Unselected string
-	Error                                string
+	Error, SelectHelp, MultiSelectHelp   string
 	MarginLeft, MarginTop, MarginBottom  int
 }
 
 var defaultTheme = Theme{
-	Prompt:       "\x1b[32m❯\x1b[0m ",
-	Cursor:       "█ ",
-	Selected:     "\x1b[34m✓\x1b[0m ",
-	Unselected:   "• ",
-	Error:        "",
-	MarginLeft:   1,
-	MarginTop:    1,
-	MarginBottom: 1,
+	Prompt:          "\x1b[32m❯\x1b[0m ",
+	Cursor:          "█ ",
+	Selected:        "\x1b[34m✓\x1b[0m ",
+	Unselected:      "• ",
+	Error:           "",
+	MarginLeft:      1,
+	MarginTop:       1,
+	MarginBottom:    2,
+	SelectHelp:      "\x1b[38;5;245m[↑↓] navigate • [enter] confirm\x1b[0m",
+	MultiSelectHelp: "\x1b[38;5;245m[↑↓] navigate • [space] select • [enter] confirm\x1b[0m",
+}
+
+func (t *terminal) helpBar(m int, text string) {
+	if text == "" {
+		return
+	}
+	fmt.Print("\x1b[s")                // save cursor
+	fmt.Printf("\x1b[%d;1H", t.height) // bottom row
+	fmt.Print("\x1b[2K")               // clear line
+	fmt.Print(strings.Repeat(" ", m))
+	fmt.Print(text)
+	fmt.Print("\x1b[u") // restore cursor
 }
 
 func chooseTheme(t *Theme) Theme {
@@ -504,6 +514,8 @@ func (s *Select) Run() error {
 				t.printf(theme.MarginLeft, "\r%s%s\n", prefix, opt.Text)
 			}
 
+			t.helpBar(theme.MarginLeft, theme.SelectHelp)
+
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
 				return err
@@ -626,6 +638,8 @@ func (m *MultiSelect) Run() error {
 
 				t.printf(theme.MarginLeft, "\r%s%s %s\n", prefix, mark, opt.Text)
 			}
+
+			t.helpBar(theme.MarginLeft, theme.MultiSelectHelp)
 
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
