@@ -350,9 +350,6 @@ func (ip *InputPrompt) Run() error {
 		t.marginTop(theme.MarginTop)
 		defer t.marginBottom(theme.MarginBottom)
 
-		t.removeCursor()
-		defer t.bringBack()
-
 		for {
 			if ip.clearScreen {
 				t.clearScreenAndTop()
@@ -360,8 +357,10 @@ func (ip *InputPrompt) Run() error {
 
 			t.clearLine()
 
+			prefix := 0
 			if ip.title != "" {
 				t.printf(theme.MarginLeft, "%s", ip.title)
+				prefix = runewidth.StringWidth(ip.title) + 1
 			}
 
 			if len(buf) == 0 && ip.placeholder != "" {
@@ -370,13 +369,12 @@ func (ip *InputPrompt) Run() error {
 				t.printf(0, "%s", string(buf))
 			}
 
-			prefix := 0
-
-			if ip.title != "" {
-				prefix = runewidth.StringWidth(ip.title + " ")
+			textW := 0
+			if len(buf) > 0 {
+				textW = runewidth.StringWidth(string(buf[:cursor]))
 			}
 
-			t.moveCursorRight(prefix + runewidth.StringWidth(string(buf[:cursor])))
+			t.moveCursorRight(prefix + textW)
 
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
@@ -386,18 +384,6 @@ func (ip *InputPrompt) Run() error {
 			switch {
 			case ev.IsCtrl('c'), ev.IsCtrl('q'):
 				return ErrCanceled
-			case ev.Key == key.Up, ev.Key == key.Down:
-				continue
-			case ev.Key == key.Left:
-				if cursor > 0 {
-					cursor--
-				}
-				continue
-			case ev.Key == key.Right:
-				if cursor < len(buf) {
-					cursor++
-				}
-				continue
 			case ev.Key == key.Enter:
 				res = string(buf)
 
@@ -417,8 +403,19 @@ func (ip *InputPrompt) Run() error {
 					buf = append(buf[:cursor-1], buf[cursor:]...)
 					cursor--
 				}
+			case ev.Key == key.Left:
+				if cursor > 0 {
+					cursor--
+				}
+			case ev.Key == key.Right:
+				if cursor < len(buf) {
+					cursor++
+				}
 			case ev.Key == key.Rune:
 				buf = append(buf[:cursor], append([]rune{ev.Rune}, buf[cursor:]...)...)
+				cursor++
+			case ev.Key == key.Space:
+				buf = append(buf[:cursor], append([]rune{' '}, buf[cursor:]...)...)
 				cursor++
 			}
 		}
