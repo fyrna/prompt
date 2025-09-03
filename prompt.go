@@ -137,7 +137,6 @@ type Theme struct {
 
 var defaultTheme = Theme{
 	Prompt:          "\x1b[32m❯\x1b[0m ",
-	Cursor:          "█ ",
 	Selected:        "\x1b[34m✓\x1b[0m ",
 	Unselected:      "• ",
 	Error:           "",
