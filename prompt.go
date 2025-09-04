@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
-	"strings"
 	"syscall"
 
 	"github.com/fyrna/x/term"
@@ -63,16 +62,6 @@ func (t *terminal) bringBack() {
 	fmt.Print("\033[?25h")
 }
 
-func (t *terminal) printf(m int, format string, a ...any) {
-	fmt.Print(strings.Repeat(" ", m))
-	fmt.Printf(format, a...)
-}
-
-func (t *terminal) println(m int, a ...any) {
-	fmt.Print(strings.Repeat(" ", m))
-	fmt.Println(a...)
-}
-
 func (t *terminal) marginTop(n int) {
 	for range n {
 		fmt.Println()
@@ -85,14 +74,13 @@ func (t *terminal) marginBottom(n int) {
 	}
 }
 
-func (t *terminal) helpBar(m int, text string) {
+func (t *terminal) helpBar(text string) {
 	if text == "" {
 		return
 	}
 	fmt.Print("\x1b[s")                // save cursor
 	fmt.Printf("\x1b[%d;1H", t.height) // bottom row
 	fmt.Print("\x1b[2K")               // clear line
-	fmt.Print(strings.Repeat(" ", m))
 	fmt.Print(text)
 	fmt.Print("\x1b[u") // restore cursor
 }
@@ -132,7 +120,7 @@ func runRaw(fn func(*terminal) error) error {
 type Theme struct {
 	Prompt, Cursor, Selected, Unselected string
 	Error, SelectHelp, MultiSelectHelp   string
-	MarginLeft, MarginTop, MarginBottom  int
+	MarginTop, MarginBottom              int
 }
 
 var defaultTheme = Theme{
@@ -140,7 +128,6 @@ var defaultTheme = Theme{
 	Selected:        "\x1b[34m✓\x1b[0m ",
 	Unselected:      "• ",
 	Error:           "",
-	MarginLeft:      1,
 	MarginTop:       0,
 	MarginBottom:    1,
 	SelectHelp:      "\x1b[38;5;245m[↑↓] navigate • [enter] confirm\x1b[0m",
@@ -245,7 +232,7 @@ func (c *Confirm) Run() error {
 			}
 
 			t.clearLine()
-			t.printf(theme.MarginLeft, "%s [%s]", c.title, df)
+			fmt.Printf("%s [%s]", c.title, df)
 
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
@@ -358,20 +345,14 @@ func (ip *InputPrompt) Run() error {
 
 			prefix := 0
 			if ip.title != "" {
-				t.printf(theme.MarginLeft, "%s", ip.title)
-
-				// fix when margin > 0 cursor a bit to right and opposite XD
-				if theme.MarginTop > 0 || theme.MarginBottom > 0 {
-					prefix = runewidth.StringWidth(ip.title) + 1
-				} else {
-					prefix = runewidth.StringWidth(ip.title)
-				}
+				fmt.Printf("%s", ip.title)
+				prefix = runewidth.StringWidth(ip.title)
 			}
 
 			if len(buf) == 0 && ip.placeholder != "" {
-				t.printf(0, "\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
+				fmt.Printf("\x1b[38;5;241m%s\x1b[0m", ip.placeholder)
 			} else {
-				t.printf(0, "%s", string(buf))
+				fmt.Printf("%s", string(buf))
 			}
 
 			textW := 0
@@ -495,7 +476,7 @@ func (s *Select) Run() error {
 		defer t.bringBack()
 
 		if s.title != "" {
-			t.println(theme.MarginLeft, s.title)
+			fmt.Println(s.title)
 		}
 
 		for {
@@ -512,10 +493,10 @@ func (s *Select) Run() error {
 					prefix = theme.Prompt
 				}
 
-				t.printf(theme.MarginLeft, "\r%s%s\n", prefix, opt.Text)
+				fmt.Printf("\r%s%s\n", prefix, opt.Text)
 			}
 
-			t.helpBar(theme.MarginLeft, theme.SelectHelp)
+			t.helpBar(theme.SelectHelp)
 
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
@@ -613,7 +594,7 @@ func (m *MultiSelect) Run() error {
 		defer t.bringBack()
 
 		if m.title != "" {
-			t.println(theme.MarginLeft, m.title)
+			fmt.Println(m.title)
 		}
 
 		for {
@@ -637,10 +618,10 @@ func (m *MultiSelect) Run() error {
 					prefix = theme.Prompt
 				}
 
-				t.printf(theme.MarginLeft, "\r%s%s %s\n", prefix, mark, opt.Text)
+				fmt.Printf("\r%s%s %s\n", prefix, mark, opt.Text)
 			}
 
-			t.helpBar(theme.MarginLeft, theme.MultiSelectHelp)
+			t.helpBar(theme.MultiSelectHelp)
 
 			ev, err := t.kr.ReadEvent()
 			if err != nil {
