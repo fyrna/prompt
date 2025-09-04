@@ -1,3 +1,9 @@
+// a simple prompt library
+//
+// It supports various prompt types including confirmation, text input,
+// single selection, and multi-selection prompts with customizable theming.
+//
+// **note** not work well on any OS except Linux (maybe)
 package prompt
 
 import (
@@ -13,6 +19,8 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
+// ErrCanceled is returned when the user cancels a prompt operation
+// using Ctrl+C or Ctrl+Q.
 var ErrCanceled = errors.New("canceled")
 
 // terminal wrapper
@@ -116,7 +124,8 @@ func runRaw(fn func(*terminal) error) error {
 	return fn(t)
 }
 
-// Theme defines the styling for prompts
+// Theme defines the styling and layout configuration for prompts.
+// Use NewTheme() to create a new theme and modify it with Set().
 type Theme struct {
 	Prompt, Cursor, Selected, Unselected string
 	Error, SelectHelp, MultiSelectHelp   string
@@ -141,25 +150,32 @@ func chooseTheme(t *Theme) Theme {
 	return *t
 }
 
-// NewTheme creates a new theme with default values
+// NewTheme creates a new theme with default values:
+// - Prompt: Green "❯" symbol
+// - Selected: Blue checkmark "✓"
+// - Unselected: Bullet "•"
+// - SelectHelp: Navigation instructions for single select
+// - MultiSelectHelp: Navigation instructions for multi-select
+// - MarginTop: 0, MarginBottom: 1
 func NewTheme() Theme {
 	return defaultTheme
 }
 
-// Set modifies the theme with the given function
+// Set modifies the theme with the given function and returns the updated theme.
+// This enables method chaining for theme customization.
 func (t Theme) Set(fn func(*Theme)) Theme {
 	fn(&t)
 	return t
 }
 
-// Option represents a selectable option
+// Option represents a selectable option in Select and MultiSelect prompts.
 type Option struct {
 	Text     string
 	Value    any
 	selected bool
 }
 
-// NewOption creates a new Option
+// NewOption creates a new Option with the given display text and value.
 func NewOption(text string, value any) *Option {
 	return &Option{
 		Text:  text,
@@ -167,13 +183,13 @@ func NewOption(text string, value any) *Option {
 	}
 }
 
-// Selected sets whether the option is selected by default
+// Selected sets whether the option is selected by default (for MultiSelect).
 func (o *Option) Selected(selected bool) *Option {
 	o.selected = selected
 	return o
 }
 
-// Confirm prompt
+// Confirm provides a yes/no confirmation prompt.
 type Confirm struct {
 	title       string
 	def         bool
@@ -182,24 +198,25 @@ type Confirm struct {
 	valuePtr    *bool
 }
 
-// NewConfirm creates a new Confirm prompt
+// NewConfirm creates a new confirmation prompt.
 func NewConfirm() *Confirm {
 	return &Confirm{}
 }
 
-// Question sets the question text
+// Title sets the question text for the confirmation prompt.
 func (c Confirm) Title(title string) *Confirm {
 	c.title = title
 	return &c
 }
 
-// ClearScreen sets whether to clear screen before showing prompt
+// ClearScreen sets whether to clear the terminal screen before showing the prompt.
 func (c Confirm) ClearScreen(on bool) *Confirm {
 	c.clearScreen = on
 	return &c
 }
 
-// Value sets the reference to store the result
+// Value sets a pointer to a boolean variable where the result will be stored.
+// If the pointer is non-nil, its current value will be used as the default.
 func (c Confirm) Value(v *bool) *Confirm {
 	c.valuePtr = v
 	if v != nil {
@@ -208,7 +225,8 @@ func (c Confirm) Value(v *bool) *Confirm {
 	return &c
 }
 
-// Run executes the prompt
+// Run executes the confirmation prompt and returns the user's choice.
+// Returns ErrCanceled if the user cancels the operation.
 func (c *Confirm) Run() error {
 	var res bool
 
@@ -269,7 +287,7 @@ func (c *Confirm) Run() error {
 	return nil
 }
 
-// InputPrompt for text input
+// InputPrompt provides a text input prompt with optional validation.
 type InputPrompt struct {
 	title, placeholder string
 	valuePtr           *string
@@ -278,48 +296,52 @@ type InputPrompt struct {
 	clearScreen        bool
 }
 
-// NewInput creates a new Input prompt
+// NewInput creates a new text input prompt.
 func NewInput() *InputPrompt {
 	return &InputPrompt{}
 }
 
-// Title sets the title text
+// Title sets the title text displayed
 func (ip InputPrompt) Title(s string) *InputPrompt {
 	ip.title = s
 	return &ip
 }
 
-// Placeholder sets the placeholder text
+// Placeholder sets the placeholder text shown when the input is empty.
 func (ip InputPrompt) Placeholder(s string) *InputPrompt {
 	ip.placeholder = s
 	return &ip
 }
 
-// Value sets the reference to store the result
+// Value sets a pointer to a string variable where the input will be stored.
+// If the pointer contains a value, it will be used as the initial input.
 func (ip InputPrompt) Value(v *string) *InputPrompt {
 	ip.valuePtr = v
 	return &ip
 }
 
-// Theme sets the theme
+// Theme sets the theme for the input prompt.
 func (ip InputPrompt) Theme(t *Theme) *InputPrompt {
 	ip.theme = t
 	return &ip
 }
 
-// ClearScreen sets whether to clear screen before showing prompt
+// ClearScreen sets whether to clear the terminal screen before showing the prompt.
 func (ip InputPrompt) ClearScreen(on bool) *InputPrompt {
 	ip.clearScreen = on
 	return &ip
 }
 
-// Validate sets the validation function
+// Validate sets a validation function that will be called on form submission.
+// The function should return an error if the input is invalid.
 func (ip InputPrompt) Validate(fn func(string) error) *InputPrompt {
 	ip.validate = fn
 	return &ip
 }
 
-// Run executes the prompt
+// Run executes the input prompt and returns the user's input.
+// Returns ErrCanceled if the user cancels the operation.
+// Returns validation error if the input fails validation.
 func (ip *InputPrompt) Run() error {
 	var res string
 
@@ -413,7 +435,7 @@ func (ip *InputPrompt) Run() error {
 	return nil
 }
 
-// Select prompt
+// Select provides a single-selection prompt from a list of options.
 type Select struct {
 	title      string
 	options    []*Option
@@ -422,18 +444,19 @@ type Select struct {
 	clearSreen bool
 }
 
-// NewSelect creates a new Select prompt
+// NewSelect creates a new single-selection prompt.
 func NewSelect() *Select {
 	return &Select{}
 }
 
-// Title sets the title text
+// Title sets the title text displayed above the options.
 func (s Select) Title(t string) *Select {
 	s.title = t
 	return &s
 }
 
-// Options sets the available options
+// Options sets the available options for selection.
+// Accepts one or more slices of Option pointers.
 func (s Select) Options(opts ...[]*Option) *Select {
 	for _, o := range opts {
 		s.options = o
@@ -441,25 +464,28 @@ func (s Select) Options(opts ...[]*Option) *Select {
 	return &s
 }
 
-// Value sets the reference to store the result
+// Value sets a pointer where the selected option's value will be stored.
+// The pointer type should match the type of the option values.
 func (s Select) Value(v any) *Select {
 	s.valuePtr = v
 	return &s
 }
 
-// Theme sets the theme
+// Theme sets the theme for the selection prompt.
 func (s Select) Theme(t *Theme) *Select {
 	s.theme = t
 	return &s
 }
 
-// ClearScreen sets whether to clear screen before showing prompt
+// ClearScreen sets whether to clear the terminal screen before showing the prompt.
 func (s Select) ClearScreen(on bool) *Select {
 	s.clearSreen = on
 	return &s
 }
 
-// Run executes the prompt
+// Run executes the selection prompt and returns the user's choice.
+// Returns ErrCanceled if the user cancels the operation.
+// Returns an error if no options are provided.
 func (s *Select) Run() error {
 	if len(s.options) == 0 {
 		return errors.New("no options")
@@ -471,7 +497,6 @@ func (s *Select) Run() error {
 
 		t.marginTop(theme.MarginTop)
 		defer t.marginBottom(theme.MarginBottom - 1)
-
 		t.removeCursor()
 		defer t.bringBack()
 
@@ -533,7 +558,7 @@ func (s *Select) Run() error {
 	return err
 }
 
-// MultiSelect prompt
+// MultiSelect provides a multiple-selection prompt from a list of options.
 type MultiSelect struct {
 	title       string
 	options     []*Option
@@ -542,42 +567,45 @@ type MultiSelect struct {
 	clearScreen bool
 }
 
-// NewMultiSelect creates a new MultiSelect prompt
+// NewMultiSelect creates a new multiple-selection prompt.
 func NewMultiSelect() *MultiSelect {
 	return &MultiSelect{}
 }
 
-// Title sets the title text
+// Title sets the title text displayed above the options.
 func (m MultiSelect) Title(t string) *MultiSelect {
 	m.title = t
 	return &m
 }
 
-// Options sets the available options
+// Options sets the available options for selection.
 func (m MultiSelect) Options(o []*Option) *MultiSelect {
 	m.options = o
 	return &m
 }
 
-// Value sets the reference to store the result
+// Value sets a pointer where the selected options' values will be stored.
+// Supports []string slices and []any slices of the option values.
 func (m MultiSelect) Value(v any) *MultiSelect {
 	m.valuePtr = v
 	return &m
 }
 
-// Theme sets the theme
+// Theme sets the theme for the multi-selection prompt.
 func (m MultiSelect) Theme(t *Theme) *MultiSelect {
 	m.theme = t
 	return &m
 }
 
-// ClearScreen sets whether to clear screen before showing prompt
+// ClearScreen sets whether to clear the terminal screen before showing the prompt.
 func (m MultiSelect) ClearScreen(on bool) *MultiSelect {
 	m.clearScreen = on
 	return &m
 }
 
-// Run executes the prompt
+// Run executes the multi-selection prompt and returns the user's choices.
+// Returns ErrCanceled if the user cancels the operation.
+// Returns an error if no options are provided.
 func (m *MultiSelect) Run() error {
 	if len(m.options) == 0 {
 		return errors.New("no options")
