@@ -141,8 +141,8 @@ var defaultTheme = Theme{
 	Unselected:      "• ",
 	Error:           "",
 	MarginLeft:      1,
-	MarginTop:       1,
-	MarginBottom:    2,
+	MarginTop:       0,
+	MarginBottom:    1,
 	SelectHelp:      "\x1b[38;5;245m[↑↓] navigate • [enter] confirm\x1b[0m",
 	MultiSelectHelp: "\x1b[38;5;245m[↑↓] navigate • [space] select • [enter] confirm\x1b[0m",
 }
@@ -359,7 +359,13 @@ func (ip *InputPrompt) Run() error {
 			prefix := 0
 			if ip.title != "" {
 				t.printf(theme.MarginLeft, "%s", ip.title)
-				prefix = runewidth.StringWidth(ip.title) + 1
+
+				// fix when margin > 0 cursor a bit to right and opposite XD
+				if theme.MarginTop > 0 || theme.MarginBottom > 0 {
+					prefix = runewidth.StringWidth(ip.title) + 1
+				} else {
+					prefix = runewidth.StringWidth(ip.title)
+				}
 			}
 
 			if len(buf) == 0 && ip.placeholder != "" {
@@ -391,7 +397,6 @@ func (ip *InputPrompt) Run() error {
 						return err
 					}
 				}
-
 				if ip.valuePtr != nil {
 					*ip.valuePtr = res
 				}
