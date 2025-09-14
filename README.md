@@ -1,3 +1,10 @@
+
+> [!CAUTION]
+> i code for fun, crafting stuff i want to make it "personal". and this shit doesn't give me any of those
+> 
+> I'll open again after i have good device to program
+
+---
 # fyrna/prompt
 
 A simple singe-file prompt library.
